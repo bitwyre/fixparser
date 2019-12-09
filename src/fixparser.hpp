@@ -117,7 +117,7 @@ using FixMessage = std::string;
             }
         }();
 
-        std::string source = "/home/sdmg15/workspace/fixparser/spec/";
+        std::string source = "spec/";
                     source += mappedVersion;
                     source += ".xml";
 
