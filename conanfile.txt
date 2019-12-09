@@ -1,0 +1,5 @@
+[requires]
+pugixml/1.10@bincrafters/stable
+
+[generators]
+cmake

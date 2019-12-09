@@ -43,4 +43,3 @@ bin/
 cmake_install.cmake 
 CMakeFiles/
 graph_info.json
-conan*
