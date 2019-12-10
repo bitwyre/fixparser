@@ -9,7 +9,7 @@ __fixparser__ is a single header library that helps parsing a FIX message, and t
   ## Requirements 
 
   - CMAKE 3.10 or greater
-  - Clang or G++ 7.3.0 (That supports C++17)
+  - Clang or G++ 8.3.0 (That supports C++17)
   - Conan - C++ package manager
   
 # How to use the library

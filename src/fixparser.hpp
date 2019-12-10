@@ -3,7 +3,7 @@
 #include <iostream> 
 #include <vector>
 #include <utility>
-#include <unordered_map>
+#include <filesystem>
 #include <sstream>
 #include <algorithm>
 #include <pugixml.hpp>
@@ -12,6 +12,7 @@
 
 namespace fixparser {
 
+namespace fs = std::filesystem;
 using FixMessage = std::string;
 
     enum class FixStd : char {
@@ -117,7 +118,11 @@ using FixMessage = std::string;
             }
         }();
 
-        std::string source = "spec/";
+
+        auto currentDir = fs::current_path();
+
+        std::string source = currentDir;
+                    source += "/spec/";
                     source += mappedVersion;
                     source += ".xml";
 
