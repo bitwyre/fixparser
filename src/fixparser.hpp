@@ -276,14 +276,6 @@ constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
  
     prettyPrint( fixMessage );
    
-    if( !error ){
-         std::cout << "Possibly no errors found :) \n";
-
-         prettyPrint( fixMessage );
-    }else{
-       std::cout << "Parsing ends with errors"<< "\n";
-    }
-
     return error;
 
 }
