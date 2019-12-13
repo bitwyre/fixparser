@@ -93,6 +93,49 @@ template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::
   return internal;
 }
 
+template<typename T>
+constexpr auto printFieldImpl(T&& field, std::false_type) -> void {
+
+    std::cout <<  field.number_ << "\t\t"; 
+    std::cout << field.name_ << ": " << field.value_ << "\n\n";
+}
+
+template<typename T>
+constexpr auto printFieldImpl(T&& field, std::true_type) -> void {
+
+    std::cout << field.number_<< "\t\t";
+    std::cout << field.fieldName_<< ": " << field.value_ << "\n\n";
+}
+
+template<typename T>
+constexpr auto printField(T&& field) -> void {
+    printFieldImpl( std::forward<T>(field), std::is_same< std::decay_t<T> , Field>() );
+}
+/**
+ * Pretty print a FixMessage
+ **/
+template<typename T>
+constexpr auto prettyPrint(T&& fixMsg) -> void {
+
+    static_assert( std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, FixMessage>);
+
+    // Print the header 
+    std::cout << "HEADER"  << "\n";
+    for(const auto& field: fixMsg.header_.headerFields_ ){
+        printField( field );
+    }
+    // Print the body
+    std::cout << "BODY"  << "\n";
+    for(const auto& field: fixMsg.body_.tagValues_ ){
+        printField( field );
+    }
+    // Print the trailer 
+    std::cout << "Trailer"  << "\n";
+    for(const auto& field: fixMsg.trailer_.trailer_ ){
+        printField( field );
+    }
+}
+
 template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,bool> {
 
