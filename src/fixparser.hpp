@@ -51,7 +51,7 @@ struct Tag{
     std::string name_;
     std::string type_;
     std::string value_;
-    std::vector<Value> tagValues_;
+    std::vector<Value> tagValues_; // Set of values that a specific Tag can take, this maybe empty for some tags
 };
 
 struct Header{
@@ -302,14 +302,65 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
  * @brief Check the message validity
  * @return true if the messge is correct false otherwise
 */
-template <typename T,typename=std::enable_if_t<std::is_convertible_v<T,std::string> > >
+template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
 constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
 
     auto splittedMsg = split( std::forward<T>(message), SOH);
 
     auto [fixMessage, error] = categorize( splittedMsg, FixStd::FIX44);
 
-    return error.isEmpty();
+    return !error.isEmpty() ? false : checkBodyLength( std::move(fixMessage) );
 }
+
+/**
+ * @brief Check the message body length
+ * @return true if the body length is correct false otherwise
+*/
+template <typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+constexpr auto checkBodyLength(T&& message) noexcept -> bool {
+
+    int computedLength{};
+
+    for(const auto& msg : message.body_.tagValues_ ){
+        std::cout << static_cast<int>( msg.value_.size() ) << "+" << static_cast<int>( (std::to_string( msg.number_ )).size() ) << "+" << 2 << "\n" ;
+        computedLength += static_cast<int>( msg.value_.size() ) + 
+                          static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
+    }
+
+    for(const auto& msg : message.header_.headerFields_ ){
+
+        // We are excluding the tag 8 which contains the FIX version and the tag 9 which contains the body length
+        if( msg.number_ != 9 && msg.number_ != 8 ){
+
+            std::cout << static_cast<int>( msg.value_.size() ) << "+" << static_cast<int>( (std::to_string( msg.number_ )).size() ) << "+" << 2 << "\n" ;
+            computedLength += static_cast<int>( msg.value_.size() ) + 
+                            static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
+        }
+   
+    }
+
+    auto bodyLengthElem = std::find_if( message.header_.headerFields_.begin(),
+                                       message.header_.headerFields_.end(),
+                                        [](auto& elem){
+                                            return elem.number_ == 9;
+                                        });
+
+    if( bodyLengthElem != message.header_.headerFields_.end() ){
+        auto f = *bodyLengthElem;
+        auto areOfEqualLength = std::atoi( f.value_.c_str() ) == computedLength;
+
+        if( !areOfEqualLength ){
+            std::string errorMsg = "Message body length mismatch.\nExpected: ";
+                        errorMsg += std::to_string(computedLength);
+                        errorMsg += "\nGot: ";
+                        errorMsg += f.value_;
+            errorBag.errors_.emplace_back( Error{ std::move(errorMsg)} );
+        }
+        return areOfEqualLength;
+    }
+
+    return false;
+}
+
 
 }// namespace fixparser
