@@ -77,6 +77,33 @@ enum class FixStd : char {
     FIX44
 };
 
+struct Error{
+    std::string errMsg_;
+};
+struct ErrorBag{
+    std::vector<Error> errors_;
+
+    auto isEmpty() -> bool {
+        return errors_.empty();
+    }
+};
+
+auto operator<<(std::ostream& os, ErrorBag errBag) -> std::ostream&{
+    if( errBag.isEmpty() ){
+        os << "No errors found" << "\n";
+        return os;
+    }
+
+     os << "A total of " << errBag.errors_.size() << " error(s) found \n\n";
+    for(const auto& err: errBag.errors_ ){
+        os << err.errMsg_ << "\n";
+    }
+
+    return os;
+}
+
+ErrorBag errorBag{};
+
 template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::string>, std::string> >
 [[nodiscard]] constexpr auto split(T&& str, const char delimiter) noexcept -> std::vector<S> {
 
@@ -119,25 +146,30 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
 
     static_assert( std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, FixMessage>);
 
+    if( !errorBag.errors_.empty() ){
+        std::cerr << "The message contains some errors, please check the FIX specification to get the list of correct fields \n\n";
+        std::cerr << errorBag << "\n\n";
+        return;
+    }
     // Print the header 
-    std::cout << "HEADER"  << "\n";
+    std::cout << "HEADER"  << "\n\n";
     for(const auto& field: fixMsg.header_.headerFields_ ){
         printField( field );
     }
     // Print the body
-    std::cout << "BODY"  << "\n";
+    std::cout << "BODY"  << "\n\n";
     for(const auto& field: fixMsg.body_.tagValues_ ){
         printField( field );
     }
     // Print the trailer 
-    std::cout << "Trailer"  << "\n";
+    std::cout << "Trailer"  << "\n\n";
     for(const auto& field: fixMsg.trailer_.trailer_ ){
         printField( field );
     }
 }
 
 template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
-constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,bool> {
+[[nodiscard]] constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,ErrorBag> {
 
     FixMessage fixMsg;
     Header fixHeader;
@@ -245,8 +277,11 @@ constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,
                 
                 // The field is not a correct field, means we didn't found an attribute number=x
                 // This results in parsing error
+                std::string err = "Field with tag=";
+                            err+= tagValueVec.front();
+                            err+= " not found";
 
-                std::cout << "Field with tag="<< tagValueVec.front() << " Not found\n";
+                errorBag.errors_.emplace_back( Error{std::move(err)} );
             }
  
         }
@@ -255,17 +290,17 @@ constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,
         fixMsg.body_ = fixBody;
         fixMsg.trailer_ = fixTrailer;
 
-        return std::make_pair(fixMsg, false);
+        return std::make_pair(fixMsg, errorBag);
     }else{
 
-        std::cerr << "Cannot open the FIX spec file" <<"\n";
-        return { FixMessage{}, true};
+        errorBag.errors_.emplace_back( Error{"Cannot open the FIX spec file."} );
+        return std::make_pair( FixMessage{}, errorBag );
     }
 }
 
 /**
  * @brief Check the message validity
- * @return true if the body length is correct false otherwise
+ * @return true if the messge is correct false otherwise
 */
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T,std::string> > >
 constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
@@ -273,11 +308,8 @@ constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
     auto splittedMsg = split( std::forward<T>(message), SOH);
 
     auto [fixMessage, error] = categorize( splittedMsg, FixStd::FIX44);
- 
-    prettyPrint( fixMessage );
-   
-    return error;
 
+    return error.isEmpty();
 }
 
 }// namespace fixparser
