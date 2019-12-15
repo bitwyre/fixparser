@@ -71,6 +71,7 @@ struct FixMessage{
     Header header_;
     Body body_;
     Trailer trailer_;
+    std::string rawMsg_;
 };
 
 enum class FixStd : char {
@@ -305,7 +306,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
 constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
 
-    auto splittedMsg = split( std::forward<T>(message), SOH);
+    auto splittedMsg = split(message, SOH);
 
     auto [fixMessage, error] = categorize( splittedMsg, FixStd::FIX44);
 
@@ -479,6 +480,49 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
     }
 
     return false;
+}
+
+/**
+ * @brief Check if the message checksum is correct
+ * @return true if the checksum is correct false otherwise
+ **/
+
+template<typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+constexpr auto checkCheckSum(T&& message) noexcept -> bool {
+
+    // We assume that the trailer only contains one field which is the checksum
+    // While checking the FIX spec we discovered that other fields in the trailer are deprecated
+
+    auto csSize = message.trailer_.trailer_.at(0).value_.size() == 3;
+
+    if( !csSize ){
+        errorBag.errors_.emplace_back( Error{"The checksum size is invalide. It should be 3"});
+        return false;
+    }
+
+    uint16_t computedCheckSum{};
+    int countSoh{0};
+
+    // The loop is going till the size() - 7, 7=number of characters in the trailing tag of the message
+    for(int i{0}; i < message.rawMsg_.size() - 7; ++i){
+        
+        if( SOH != message.rawMsg_.at(i) ){
+            computedCheckSum += message.rawMsg_.at(i);
+        }else{
+            ++countSoh;
+        }
+    }
+
+    auto computedCheckSumStr = "0"+ std::to_string((computedCheckSum+countSoh)%256);
+    
+    if( computedCheckSumStr != message.trailer_.trailer_.at(0).value_ ){
+
+        std::string errMsg = "The message checksum is invalid.\nExpected: " + computedCheckSumStr + "\nGot: " + message.trailer_.trailer_.at(0).value_+ "\n";
+        errorBag.errors_.emplace_back( Error{std::move(errMsg)});
+        return false;
+    }
+
+    return true;
 }
 
 
