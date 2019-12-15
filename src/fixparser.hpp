@@ -103,6 +103,7 @@ auto operator<<(std::ostream& os, ErrorBag errBag) -> std::ostream&{
 }
 
 ErrorBag errorBag{};
+pugi::xml_document fixSpec;
 
 template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::string>, std::string> >
 [[nodiscard]] constexpr auto split(T&& str, const char delimiter) noexcept -> std::vector<S> {
@@ -193,7 +194,6 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
                 source += mappedVersion;
                 source += ".xml";
 
-    pugi::xml_document fixSpec;
     pugi::xml_parse_result result = fixSpec.load_file(source.c_str());
 
     if( result ){ 
@@ -309,8 +309,127 @@ constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
 
     auto [fixMessage, error] = categorize( splittedMsg, FixStd::FIX44);
 
-    return !error.isEmpty() ? false : checkBodyLength( std::move(fixMessage) );
+    return !error.isEmpty() ? false : checkRequiredFields( std::move(fixMessage) );
 }
+
+/**
+ * @brief Check for required fields in the message 
+ * @return true if the message contents required fields, false otherwise
+*/
+template <typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
+
+    auto headerFields = fixSpec.child("fix").child("header").children();
+    auto trailerFields = fixSpec.child("fix").child("trailer").children();
+
+    bool hasErrors{};
+    std::string msgType{};
+
+    // Check for required fields in the header
+    for(const auto& child: headerFields ){
+
+        if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
+
+            // Check if the field is present in the header
+            auto isFieldPresent = std::find_if( message.header_.headerFields_.begin(), 
+                                                message.header_.headerFields_.end(),
+                                                [&child](auto& field){
+                                                    return field.fieldName_ == child.attribute("name").as_string();
+                                                });
+
+            if( isFieldPresent == message.header_.headerFields_.end() ){
+                std::string errMsg = "HEADER: the tag with name=";
+                            errMsg += child.attribute("name").as_string();
+                            errMsg += " is required";
+
+                errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                hasErrors = true;
+            }else{
+
+            // We retrieve and store the message type at this level 
+                auto f = *isFieldPresent;
+
+                if( f.number_ == 35 ){
+                    msgType = f.value_;
+                }
+            }
+
+        }
+    }
+    
+    // Check the required fields in the body
+    // NOTE: There are some conditional required fields, not dealing with them as of now
+    // NOTE: Some required fields depends on the message type tag 35=MsgType
+
+    auto isCorrectMsgType = fixSpec.child("fix")
+                                   .child("messages")
+                                   .find_child_by_attribute("message","msgtype", msgType.c_str() );
+
+    if( !isCorrectMsgType ){
+        std::string errMsg("The message type is invalid");
+
+        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+        hasErrors = true;
+    }else{
+        
+        // We can now check for required fields for the specified message
+        // @TODO: Deal with the case of required components
+
+        auto msgField = std::move(isCorrectMsgType);
+
+        for(const auto& child: msgField.children() ){
+
+            if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
+
+                // Check if the field is present in the header
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(), 
+                                                    message.body_.tagValues_.end(),
+                                                    [&child](auto& tag){
+                                                        return tag.name_ == child.attribute("name").as_string();
+                                                    });
+
+                if( isFieldPresent == message.body_.tagValues_.end() ){
+                    std::string errMsg = "BODY: the tag with name=";
+                                errMsg += child.attribute("name").as_string();
+                                errMsg += " is required";
+
+                    errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                    hasErrors = true;
+                }
+
+            }
+        }
+
+    }
+
+    // Check the required fields for the trailer 
+
+    for(const auto& child: trailerFields ){
+
+        if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
+
+            // Check if the field is present in the header
+            auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(), 
+                                                message.trailer_.trailer_.end(),
+                                                [&child](auto& field){
+                                                    return field.fieldName_ == child.attribute("name").as_string();
+                                                });
+
+            if( isFieldPresent == message.trailer_.trailer_.end() ){
+                std::string errMsg = "TRAILER: the tag with name=";
+                            errMsg += child.attribute("name").as_string();
+                            errMsg += " is required";
+
+                errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                hasErrors = true;
+            }
+
+        }
+    }
+
+    return hasErrors;
+}
+
 
 /**
  * @brief Check the message body length
