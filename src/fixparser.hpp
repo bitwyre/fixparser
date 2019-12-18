@@ -309,17 +309,18 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 }
 
 /**
- * @brief Check the message validity
+ * @brief Check the message validity over a Fix specification 
+ *       if none is specified the FIX44 standard is used 
  * @return true if the message is correct false otherwise
  * When it returns false, the list of errors encountered can be get via the getErrors() method
  * and be displayed e.g: std::cout << fixparser::getErrors() << "\n"
 */
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
-constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
+constexpr auto checkMsgValidity(T&& message, const FixStd fixStd = FixStd::FIX44 ) noexcept -> bool {
 
     auto splittedMsg = split( message, SOH);
 
-    auto [fixMg, error] = categorize( splittedMsg, FixStd::FIX44);
+    auto [fixMg, error] = categorize( splittedMsg, std::move(fixStd) );
 
     if( !error.isEmpty() ){
         return false;
