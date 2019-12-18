@@ -105,6 +105,7 @@ auto operator<<(std::ostream& os, ErrorBag errBag) -> std::ostream&{
 
 ErrorBag errorBag{};
 pugi::xml_document fixSpec;
+FixMessage fixMessage;
 
 template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::string>, std::string> >
 [[nodiscard]] constexpr auto split(T&& str, const char delimiter) noexcept -> std::vector<S> {
@@ -306,18 +307,44 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
 constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
 
-    auto splittedMsg = split(message, SOH);
+    auto splittedMsg = split( message, SOH);
 
-    auto [fixMessage, error] = categorize( splittedMsg, FixStd::FIX44);
+    auto [fixMg, error] = categorize( splittedMsg, FixStd::FIX44);
 
-    return !error.isEmpty() ? false : checkRequiredFields( std::move(fixMessage) );
+    if( !error.isEmpty() ){
+        return false;
+    }
+
+    auto requiredFieldsPresent = checkRequiredFields( fixMg );
+
+    if( requiredFieldsPresent ){
+        return false;
+    }
+
+    auto bodyLengthCorrect = checkBodyLength( fixMg );
+
+    if( !bodyLengthCorrect ){
+        return false;
+    }
+
+    auto checkSumCorrect = checkCheckSum( fixMg );
+    
+    if( !checkSumCorrect ){
+        return false;
+    }
+
+    fixMessage = std::move(fixMg);
+    fixMessage.rawMsg_ = std::forward<T>(message); 
+    
+    return true;
+
 }
 
 /**
  * @brief Check for required fields in the message 
- * @return true if the message contents required fields, false otherwise
+ * @return true if the message contents errors (means doesn't have the required fields), false otherwise
 */
-template <typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+template <typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
 constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
 
     auto headerFields = fixSpec.child("fix").child("header").children();
@@ -436,13 +463,12 @@ constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
  * @brief Check the message body length
  * @return true if the body length is correct false otherwise
 */
-template <typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+template <typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
 constexpr auto checkBodyLength(T&& message) noexcept -> bool {
 
     int computedLength{};
 
     for(const auto& msg : message.body_.tagValues_ ){
-        std::cout << static_cast<int>( msg.value_.size() ) << "+" << static_cast<int>( (std::to_string( msg.number_ )).size() ) << "+" << 2 << "\n" ;
         computedLength += static_cast<int>( msg.value_.size() ) + 
                           static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
     }
@@ -451,8 +477,6 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
 
         // We are excluding the tag 8 which contains the FIX version and the tag 9 which contains the body length
         if( msg.number_ != 9 && msg.number_ != 8 ){
-
-            std::cout << static_cast<int>( msg.value_.size() ) << "+" << static_cast<int>( (std::to_string( msg.number_ )).size() ) << "+" << 2 << "\n" ;
             computedLength += static_cast<int>( msg.value_.size() ) + 
                             static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
         }
@@ -487,7 +511,7 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
  * @return true if the checksum is correct false otherwise
  **/
 
-template<typename T,typename=std::enable_if_t<std::is_same_v<T, FixMessage> > >
+template<typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
 constexpr auto checkCheckSum(T&& message) noexcept -> bool {
 
     // We assume that the trailer only contains one field which is the checksum
