@@ -107,6 +107,14 @@ ErrorBag errorBag{};
 pugi::xml_document fixSpec;
 FixMessage fixMessage;
 
+/**
+ * @brief Retrieve the list of errors that occured during parsing
+ * @return ErrorBag
+ **/
+auto getErrors() -> ErrorBag {
+     return errorBag;
+}
+
 template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::string>, std::string> >
 [[nodiscard]] constexpr auto split(T&& str, const char delimiter) noexcept -> std::vector<S> {
 
@@ -302,7 +310,9 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 
 /**
  * @brief Check the message validity
- * @return true if the messge is correct false otherwise
+ * @return true if the message is correct false otherwise
+ * When it returns false, the list of errors encountered can be get via the getErrors() method
+ * and be displayed e.g: std::cout << fixparser::getErrors() << "\n"
 */
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
 constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
@@ -315,9 +325,9 @@ constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
         return false;
     }
 
-    auto requiredFieldsPresent = checkRequiredFields( fixMg );
+    auto requiredFieldsPresent = hasRequiredFields( fixMg );
 
-    if( requiredFieldsPresent ){
+    if( !requiredFieldsPresent ){
         return false;
     }
 
@@ -342,15 +352,15 @@ constexpr auto checkMsgValidity(T&& message) noexcept -> bool {
 
 /**
  * @brief Check for required fields in the message 
- * @return true if the message contents errors (means doesn't have the required fields), false otherwise
+ * @return true if the message has required fields, false otherwise
 */
 template <typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
-constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
+constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
 
     auto headerFields = fixSpec.child("fix").child("header").children();
     auto trailerFields = fixSpec.child("fix").child("trailer").children();
 
-    bool hasErrors{};
+    bool hasRequired{true};
     std::string msgType{};
 
     // Check for required fields in the header
@@ -371,7 +381,7 @@ constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
                             errMsg += " is required";
 
                 errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                hasErrors = true;
+                hasRequired = false;
             }else{
 
             // We retrieve and store the message type at this level 
@@ -397,7 +407,7 @@ constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
         std::string errMsg("The message type is invalid");
 
         errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-        hasErrors = true;
+        hasRequired = false;
     }else{
         
         // We can now check for required fields for the specified message
@@ -422,7 +432,7 @@ constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
                                 errMsg += " is required";
 
                     errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                    hasErrors = true;
+                    hasRequired = false;
                 }
 
             }
@@ -449,13 +459,13 @@ constexpr auto checkRequiredFields(T&& message) noexcept -> bool{
                             errMsg += " is required";
 
                 errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                hasErrors = true;
+                hasRequired = false;
             }
 
         }
     }
 
-    return hasErrors;
+    return hasRequired;
 }
 
 
