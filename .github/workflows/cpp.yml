@@ -29,4 +29,5 @@ jobs:
           cmake install ..
       - name: Build step 2
         run: |
-          make install
+          cd build
+          sudo make install
