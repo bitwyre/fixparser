@@ -1,13 +1,13 @@
 #include <string>
 #include <cstring>
-#include <string_view> 
-#include <iostream> 
+#include <string_view>
+#include <iostream>
 #include <vector>
 #include <utility>
 #include <filesystem>
 #include <sstream>
 #include <algorithm>
-#include <type_traits> 
+#include <type_traits>
 #include <pugixml.hpp>
 
 #define SOH '|'
@@ -15,7 +15,7 @@
 namespace fixparser {
 
 namespace fs = std::filesystem;
-// Defining the necessary types to hold a FIX message 
+// Defining the necessary types to hold a FIX message
 struct Field{
     std::string fieldName_;
     std::string value_;
@@ -39,7 +39,7 @@ struct Message{
     std::string msgType_;
     std::string msgCat_;
     std::vector<Field> msgFields_;
-}; 
+};
 
 struct Value{
     std::string enumValue_;
@@ -134,7 +134,7 @@ template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::
 template<typename T>
 constexpr auto printFieldImpl(T&& field, std::false_type) -> void {
 
-    std::cout <<  field.number_ << "\t\t"; 
+    std::cout <<  field.number_ << "\t\t";
     std::cout << field.name_ << ": " << field.value_ << "\n\n";
 }
 
@@ -162,7 +162,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
         std::cerr << errorBag << "\n\n";
         return;
     }
-    // Print the header 
+    // Print the header
     std::cout << "HEADER"  << "\n\n";
     for(const auto& field: fixMsg.header_.headerFields_ ){
         printField( field );
@@ -172,7 +172,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
     for(const auto& field: fixMsg.body_.tagValues_ ){
         printField( field );
     }
-    // Print the trailer 
+    // Print the trailer
     std::cout << "Trailer"  << "\n\n";
     for(const auto& field: fixMsg.trailer_.trailer_ ){
         printField( field );
@@ -206,7 +206,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 
     pugi::xml_parse_result result = fixSpec.load_file(source.c_str());
 
-    if( result ){ 
+    if( result ){
 
         for(auto& tagValue : vec){
 
@@ -217,7 +217,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
             auto fields = fixSpec.child("fix").child("fields");
 
             auto isField = fields.find_node([&tagValueVec](auto& node){
-                return 
+                return
                 std::strcmp(node.attribute("number").as_string(), tagValueVec.front().c_str() ) == 0;
             });
 
@@ -227,7 +227,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
                  f.value_ = tagValueVec.back();
 
                 auto nodeFoundInHeader = headers.find_node([&isField](auto& node){
-                    return 
+                    return
                     std::strcmp(node.attribute("name").as_string(), isField.attribute("name").as_string() ) == 0;
                 });
 
@@ -236,7 +236,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
                         // The node is in a <group> node
                         f.isInGroup_ = true;
                     }
-                    
+
                     f.fieldName_ = static_cast<std::string>(nodeFoundInHeader.attribute("name").as_string());
                     f.isComponent_ = false;
                     f.isRequired_ = nodeFoundInHeader.attribute("required").as_int() != 0x4E ? true : false;
@@ -247,7 +247,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
                 if( !nodeFoundInHeader ){
 
                     auto nodeFoundInTrailer = trailers.find_node([&isField](auto& node){
-                        return 
+                        return
                         std::strcmp(node.attribute("name").as_string(), isField.attribute("name").as_string() ) == 0;
                     });
 
@@ -284,7 +284,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
                 }
 
             }else{
-                
+
                 // The field is not a correct field, means we didn't found an attribute number=x
                 // This results in parsing error
                 std::string err = "Field with tag=";
@@ -293,7 +293,7 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 
                 errorBag.errors_.emplace_back( Error{std::move(err)} );
             }
- 
+
         }
 
         fixMsg.header_ = fixHeader;
@@ -309,8 +309,8 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
 }
 
 /**
- * @brief Check the message validity over a Fix specification 
- *       if none is specified the FIX44 standard is used 
+ * @brief Check the message validity over a Fix specification
+ *       if none is specified the FIX44 standard is used
  * @return true if the message is correct false otherwise
  * When it returns false, the list of errors encountered can be get via the getErrors() method
  * and be displayed e.g: std::cout << fixparser::getErrors() << "\n"
@@ -339,20 +339,20 @@ constexpr auto checkMsgValidity(T&& message, const FixStd fixStd = FixStd::FIX44
     }
 
     auto checkSumCorrect = checkCheckSum( fixMg );
-    
+
     if( !checkSumCorrect ){
         return false;
     }
 
     fixMessage = std::move(fixMg);
-    fixMessage.rawMsg_ = std::forward<T>(message); 
-    
+    fixMessage.rawMsg_ = std::forward<T>(message);
+
     return true;
 
 }
 
 /**
- * @brief Check for required fields in the message 
+ * @brief Check for required fields in the message
  * @return true if the message has required fields, false otherwise
 */
 template <typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
@@ -370,7 +370,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
         if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
 
             // Check if the field is present in the header
-            auto isFieldPresent = std::find_if( message.header_.headerFields_.begin(), 
+            auto isFieldPresent = std::find_if( message.header_.headerFields_.begin(),
                                                 message.header_.headerFields_.end(),
                                                 [&child](auto& field){
                                                     return field.fieldName_ == child.attribute("name").as_string();
@@ -385,7 +385,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
                 hasRequired = false;
             }else{
 
-            // We retrieve and store the message type at this level 
+            // We retrieve and store the message type at this level
                 auto f = *isFieldPresent;
 
                 if( f.number_ == 35 ){
@@ -395,7 +395,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
 
         }
     }
-    
+
     // Check the required fields in the body
     // NOTE: There are some conditional required fields, not dealing with them as of now
     // NOTE: Some required fields depends on the message type tag 35=MsgType
@@ -410,7 +410,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
         errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
         hasRequired = false;
     }else{
-        
+
         // We can now check for required fields for the specified message
         // @TODO: Deal with the case of required components
 
@@ -421,7 +421,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
             if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
 
                 // Check if the field is present in the header
-                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(), 
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
                                                     message.body_.tagValues_.end(),
                                                     [&child](auto& tag){
                                                         return tag.name_ == child.attribute("name").as_string();
@@ -441,14 +441,14 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
 
     }
 
-    // Check the required fields for the trailer 
+    // Check the required fields for the trailer
 
     for(const auto& child: trailerFields ){
 
         if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
 
             // Check if the field is present in the header
-            auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(), 
+            auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(),
                                                 message.trailer_.trailer_.end(),
                                                 [&child](auto& field){
                                                     return field.fieldName_ == child.attribute("name").as_string();
@@ -480,7 +480,7 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
     int computedLength{};
 
     for(const auto& msg : message.body_.tagValues_ ){
-        computedLength += static_cast<int>( msg.value_.size() ) + 
+        computedLength += static_cast<int>( msg.value_.size() ) +
                           static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
     }
 
@@ -488,10 +488,10 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
 
         // We are excluding the tag 8 which contains the FIX version and the tag 9 which contains the body length
         if( msg.number_ != 9 && msg.number_ != 8 ){
-            computedLength += static_cast<int>( msg.value_.size() ) + 
+            computedLength += static_cast<int>( msg.value_.size() ) +
                             static_cast<int>( (std::to_string( msg.number_ )).size() ) + 2; // 2 = the SOH plus the '=' in the message
         }
-   
+
     }
 
     auto bodyLengthElem = std::find_if( message.header_.headerFields_.begin(),
@@ -540,7 +540,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
 
     // The loop is going till the size() - 7, 7=number of characters in the trailing tag of the message
     for(int i{0}; i < message.rawMsg_.size() - 7; ++i){
-        
+
         if( SOH != message.rawMsg_.at(i) ){
             computedCheckSum += message.rawMsg_.at(i);
         }else{
@@ -553,8 +553,8 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
 
     if( computedCheckSumStr.size() != 3 ){
         computedCheckSumStr = "0" + computedCheckSumStr;
-    } 
-    
+    }
+
     if( computedCheckSumStr != message.trailer_.trailer_.at(0).value_ ){
 
         std::string errMsg = "The message checksum is invalid.\nExpected: " + computedCheckSumStr + "\nGot: " + message.trailer_.trailer_.at(0).value_+ "\n";
