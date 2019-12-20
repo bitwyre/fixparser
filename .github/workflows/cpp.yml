@@ -30,4 +30,5 @@ jobs:
       - name: Build step 2
         run: |
           cd build
-          sudo make install
+          make
+          make install
