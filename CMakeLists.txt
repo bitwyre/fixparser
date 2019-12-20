@@ -23,7 +23,7 @@ include("cmake/cmakeconan.cmake")
 add_library(fixparser ${FIXP_SOURCES})
 set_target_properties(fixparser PROPERTIES LINKER_LANGUAGE CXX)
 
-#Building and resolving dependencies with CONAN?
+# Building and resolving dependencies with CONAN?
 if(WITH_CONAN)
     target_link_libraries(fixparser ${CONAN_LIBS} stdc++fs) 
 else()
