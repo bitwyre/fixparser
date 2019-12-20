@@ -18,7 +18,7 @@ __fixparser__ is a single header library that helps parsing a FIX message, and t
 
   # Building and installing 
   
-  Running these commands successively you will have the library build 
+  Running these commands successively you will have the library built
 
   ```
     mkdir build && $_
@@ -41,7 +41,7 @@ __fixparser__ is a single header library that helps parsing a FIX message, and t
   Finally make the library available widely in your system: 
 
   ```
-    sudo make install 
+    make && sudo make install 
   ```
 
 # How to use the library
