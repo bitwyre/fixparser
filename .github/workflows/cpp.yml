@@ -10,7 +10,7 @@ jobs:
       matrix:
         os: [ubuntu-18.04]
         python-version: [3.7]
-        gcc-version: [9]
+        gcc-version: [8.3]
 
     steps:
       - uses: actions/checkout@v1
@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cmake install ..
+          cmake install .. -DBUILD_EXAMPLES=OFF
       - name: Build step 2
         run: |
           cd build
