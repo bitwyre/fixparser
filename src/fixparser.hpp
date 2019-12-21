@@ -209,7 +209,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
  * @return true if can open a file with the specified FixStd
  **/
 
-[[nodsicard]] auto mapVersionAndOpenFile(Config& config) noexcept -> bool {
+[[nodiscard]] auto mapVersionAndOpenFile(Config& config) noexcept -> bool {
     
     auto mappedVersion = [&config = std::as_const(config)](){
         switch (config.getFixStd()){
