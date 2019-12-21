@@ -89,6 +89,30 @@ struct ErrorBag{
     }
 };
 
+struct Config{
+
+    Config(): pathSrc_("/usr/local/etc"), fixStd_(FixStd::FIX44){}
+
+    template<typename N>
+    Config(N&& pathSrc): pathSrc_(std::forward<N>(pathSrc)) {}
+
+    template<typename N>
+    Config(N&& pathSrc, FixStd&& fixStd): pathSrc_(std::forward<N>(pathSrc)),
+                                          fixStd_(std::move(fixStd)) {}
+    auto getPath() const{
+        return pathSrc_;
+    }
+
+    auto getFixStd() const{
+        return fixStd_;
+    }
+
+    private:
+        std::string pathSrc_;
+        FixStd fixStd_;
+
+};
+
 auto operator<<(std::ostream& os, ErrorBag errBag) -> std::ostream&{
     if( errBag.isEmpty() ){
         os << "No errors found" << "\n";
@@ -150,7 +174,7 @@ constexpr auto printField(T&& field) -> void {
     printFieldImpl( std::forward<T>(field), std::is_same< std::decay_t<T> , Field>() );
 }
 /**
- * Pretty print a FixMessage
+ * @brief Pretty print a FixMessage
  **/
 template<typename T>
 constexpr auto prettyPrint(T&& fixMsg) -> void {
@@ -179,32 +203,61 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
     }
 }
 
-template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
-[[nodiscard]] constexpr auto categorize(T&& vec, const FixStd fixStd) -> std::pair<FixMessage,ErrorBag> {
+
+/**
+ * @brief map a given FIX version to supported one and open the correspoding dictionnary
+ * @return true if can open a file with the specified FixStd
+ **/
+
+[[nodsicard]] auto mapVersionAndOpenFile(Config& config) noexcept -> bool {
+    
+    auto mappedVersion = [&config = std::as_const(config)](){
+        switch (config.getFixStd()){
+            case FixStd::FIX44:
+                return "FIX44";
+                break;
+            default:
+                return "FIX44";
+                break;
+        }
+    }();
+
+    // Using the overload of fs::current_path that doesn't throw an exception
+    std::error_code ec;
+    
+    // Changing the current directory to the one set on config.getPath()
+    fs::current_path(config.getPath(), ec);
+
+    auto currentDir = fs::current_path(ec); 
+
+    if( ec ){
+        return false;
+    }
+
+    std::string source = currentDir;
+                source += "/fixparser/";
+                source += mappedVersion;
+                source += ".xml";
+
+    pugi::xml_parse_result result = fixSpec.load_file(source.c_str());
+
+    return static_cast<bool>(result);
+}
+
+/**
+ * @brief take a vector of string and categorize each element according to the fix spec
+ * @return a pair containing the constructed FIX message and an error bag which is empty is no errors found during the process
+ **/
+
+template<typename T,typename=std::enable_if_t< !std::is_integral_v<T> > >
+[[nodiscard]] constexpr auto categorize(T&& vec, Config& config) noexcept -> std::pair<FixMessage,ErrorBag> {
 
     FixMessage fixMsg;
     Header fixHeader;
     Body fixBody;
     Trailer fixTrailer;
 
-    auto mappedVersion = [&fixStd = std::as_const(fixStd)](){
-            switch (fixStd){
-                case FixStd::FIX44 :
-                    return "FIX44";
-                    break;
-                default:
-                    return "FIX44";
-                    break;
-            }
-        }();
-
-    auto currentDir = fs::current_path();
-    std::string source = currentDir;
-                source += "/spec/";
-                source += mappedVersion;
-                source += ".xml";
-
-    pugi::xml_parse_result result = fixSpec.load_file(source.c_str());
+    auto result = mapVersionAndOpenFile( config );
 
     if( result ){
 
@@ -316,11 +369,11 @@ template<typename T,typename=std::enable_if< !std::is_integral_v<T> > >
  * and be displayed e.g: std::cout << fixparser::getErrors() << "\n"
 */
 template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
-constexpr auto checkMsgValidity(T&& message, const FixStd fixStd = FixStd::FIX44 ) noexcept -> bool {
+constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
 
     auto splittedMsg = split( message, SOH);
 
-    auto [fixMg, error] = categorize( splittedMsg, std::move(fixStd) );
+    auto [fixMg, error] = categorize( splittedMsg, config);
 
     if( !error.isEmpty() ){
         return false;
