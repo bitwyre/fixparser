@@ -81,5 +81,8 @@ if the message is a valid one or false otherwise. When it returns `false` meanin
 
 # Running the tests
 
+# Author
+
+- [Sonkeng Maldini](https://github.com/sdmg15)
 
 # Licence
