@@ -28,7 +28,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install conan
           conan -v
-          conan profile update settings.compiler.libcxx=libstdc++11 default
       - name: Build step 1
         run: |
           mkdir -p build
