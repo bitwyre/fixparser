@@ -3,10 +3,11 @@
 
 auto main() -> int {
 
-  std::string msg("8=FIX.4.4|9=114|35=V|34=2|49=TRADEBOTMD002|52=20180425-17:51:40.000|56=BITWYRE|262=2|263=1|264=1|265=0|146=1|55=BTCUSD|267=1|269=0|10=016|");
+  std::string msg("8=FIX.4.4|9=147|35=F|34=3|49=TRADEBOTOE002|52=20180425-17:57:59.000|56=GEMINI|11=GHDzdNUUXaMMDZdfwe|38=1|41=z35u64KR1gen7f2SpB|54=2|55=BTCUSD|60=20180425-17:57:59|10=185|");
 
+  fixparser::Config cfg;
 
-  std::cout << fixparser::checkMsgValidity(msg) << "\n";
+  std::cout << fixparser::checkMsgValidity(msg, cfg) << "\n";
   std::cout << fixparser::getErrors() << "\n";
   return 1;
 }
