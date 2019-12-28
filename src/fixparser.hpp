@@ -373,35 +373,35 @@ constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
 
     auto splittedMsg = split( message, SOH);
 
-    auto [fixMg, error] = categorize( splittedMsg, config);
+    auto [fixMsg, error] = categorize( splittedMsg, config);
+
+    fixMsg.rawMsg_ = std::forward<T>(message);
 
     if( !error.isEmpty() ){
         return false;
     }
-
-    auto requiredFieldsPresent = hasRequiredFields( fixMg );
+    
+    auto requiredFieldsPresent = hasRequiredFields( fixMsg );
 
     if( !requiredFieldsPresent ){
         return false;
     }
 
-    auto bodyLengthCorrect = checkBodyLength( fixMg );
+    auto bodyLengthCorrect = checkBodyLength( fixMsg );
 
     if( !bodyLengthCorrect ){
         return false;
     }
 
-    auto checkSumCorrect = checkCheckSum( fixMg );
+    auto checkSumCorrect = checkCheckSum( fixMsg );
 
     if( !checkSumCorrect ){
         return false;
     }
 
-    fixMessage = std::move(fixMg);
-    fixMessage.rawMsg_ = std::forward<T>(message);
+    fixMessage = std::forward<decltype(fixMsg)>(fixMsg);
 
     return true;
-
 }
 
 /**
@@ -580,11 +580,10 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
 
     // We assume that the trailer only contains one field which is the checksum
     // While checking the FIX spec we discovered that other fields in the trailer are deprecated
-
     auto csSize = message.trailer_.trailer_.at(0).value_.size() == 3;
-
+ 
     if( !csSize ){
-        errorBag.errors_.emplace_back( Error{"The checksum size is invalide. It should be 3"});
+        errorBag.errors_.emplace_back( Error{"The checksum size is invalid. It should be 3"});
         return false;
     }
 
@@ -592,7 +591,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     int countSoh{0};
 
     // The loop is going till the size() - 7, 7=number of characters in the trailing tag of the message
-    for(int i{0}; i < message.rawMsg_.size() - 7; ++i){
+    for(int i{0}; i != message.rawMsg_.size() - 7; ++i){
 
         if( SOH != message.rawMsg_.at(i) ){
             computedCheckSum += message.rawMsg_.at(i);
@@ -601,7 +600,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
         }
     }
 
-    computedCheckSum = (computedCheckSum+countSoh)%256;
+    computedCheckSum = (computedCheckSum + countSoh)%256;
     auto computedCheckSumStr = std::to_string( computedCheckSum );
 
     if( computedCheckSumStr.size() != 3 ){
@@ -618,5 +617,13 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     return true;
 }
 
+/**
+ * @brief Print the message in a human readable way
+ **/
+
+template<typename T=void>
+constexpr auto fixToHuman() -> void {
+    return prettyPrint( fixMessage );
+}
 
 }// namespace fixparser
