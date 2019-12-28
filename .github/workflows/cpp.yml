@@ -33,8 +33,9 @@ jobs:
           mkdir -p build
           cd build
           cmake install .. -DBUILD_EXAMPLES=OFF
+          sudo make install
       - name: Build step 2
         run: |
           cd build
-          make
+          cmake install .. -DBUILD_EXAMPLES=ON
           sudo make install
