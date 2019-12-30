@@ -197,7 +197,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
         printField( field );
     }
     // Print the trailer
-    std::cout << "Trailer"  << "\n\n";
+    std::cout << "TRAILER"  << "\n\n";
     for(const auto& field: fixMsg.trailer_.trailer_ ){
         printField( field );
     }
@@ -404,6 +404,85 @@ constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
     return true;
 }
 
+template<typename T, typename M>
+constexpr auto processComponent(T&&, M&&) -> bool; 
+
+/**
+ *  @brief process groups
+ *  @return true if the message has the necessary required fields of the group, false otherwise
+ **/
+template<typename T, typename M>
+constexpr auto processGroup(T&& groupNode, M&& message) -> bool{
+    
+    bool hasRequired{1};
+
+    for(auto& child: groupNode.children()){
+
+            if( std::strcmp("component", child.name() ) == 0 ){
+                return processComponent( child.attribute("name").as_string(), std::forward<M>(message) );
+            }else{
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                        message.body_.tagValues_.end(),
+                                                        [&child](auto& tag){
+                                                            return tag.name_ == child.attribute("name").as_string();
+                                                    });
+
+                    if( isFieldPresent == message.body_.tagValues_.end() ){
+                        std::string errMsg = "BODY: the tag with name=";
+                                    errMsg += child.attribute("name").as_string();
+                                    errMsg += " is required";
+
+                        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                        hasRequired = false;
+            }
+        }
+    }
+
+    return hasRequired;
+}
+/**
+ * @brief Process the given component for required fields checks
+ * @return true if the message has the necessary required fields by the component, false otherwise
+ **/
+template<typename T, typename M>
+constexpr auto processComponent(T&& compName, M&& message) -> bool{
+    auto component = fixSpec.child("fix")
+                            .child("components")
+                            .find_child_by_attribute("component","name", compName );
+    
+    bool hasRequired{1};
+
+    for(auto& componentField: component.children() ){
+        if( std::strcmp( componentField.attribute("required").as_string(), "Y") == 0 ){
+            
+            if( std::strcmp("component", componentField.name() ) == 0 ) {
+                
+                return processComponent(componentField.attribute("name").as_string(), std::forward<M>(message));
+            }
+            else if( std::strcmp("group", componentField.name()) == 0 ) {
+                return processGroup(componentField, std::forward<M>(message) );
+            }else{
+
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                    message.body_.tagValues_.end(),
+                                                    [&componentField](auto& tag){
+                                                        return tag.name_ == componentField.attribute("name").as_string();
+                                                   });
+
+                if( isFieldPresent == message.body_.tagValues_.end() ){
+                    std::string errMsg = "BODY: the tag with name=";
+                                errMsg += componentField.attribute("name").as_string();
+                                errMsg += " is required";
+
+                    errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                    hasRequired = false;
+                }                                   
+            }
+        }
+    }
+
+    return hasRequired;
+}
 /**
  * @brief Check for required fields in the message
  * @return true if the message has required fields, false otherwise
@@ -472,21 +551,35 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
         for(const auto& child: msgField.children() ){
 
             if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
+                
+                // @TODO use tag dispatcher instead of if-else
+                // Check if the field is present in the body
+            
+                if( std::strcmp("component", child.name() ) == 0 ){
 
-                // Check if the field is present in the header
-                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
-                                                    message.body_.tagValues_.end(),
-                                                    [&child](auto& tag){
-                                                        return tag.name_ == child.attribute("name").as_string();
-                                                    });
+                    hasRequired = processComponent( child.attribute("name").as_string(), std::forward<T>(message) );
+                                           
+                }else if( std::strcmp("group", child.name()) == 0 ){
 
-                if( isFieldPresent == message.body_.tagValues_.end() ){
-                    std::string errMsg = "BODY: the tag with name=";
-                                errMsg += child.attribute("name").as_string();
-                                errMsg += " is required";
+                    hasRequired = processGroup(child, std::forward<T>(message) );
 
-                    errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                    hasRequired = false;
+                }else{
+
+                    auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                        message.body_.tagValues_.end(),
+                                                        [&child](auto& tag){
+                                                            return tag.name_ == child.attribute("name").as_string();
+                                                        });
+
+                    if( isFieldPresent == message.body_.tagValues_.end() ){
+                        std::string errMsg = "BODY: the tag with name=";
+                                    errMsg += child.attribute("name").as_string();
+                                    errMsg += " is required";
+
+                        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                        hasRequired = false;
+                    }
+
                 }
 
             }
@@ -500,7 +593,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
 
         if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
 
-            // Check if the field is present in the header
+            // Check if the field is present in the trailer
             auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(),
                                                 message.trailer_.trailer_.end(),
                                                 [&child](auto& field){
