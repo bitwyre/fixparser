@@ -197,7 +197,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
         printField( field );
     }
     // Print the trailer
-    std::cout << "Trailer"  << "\n\n";
+    std::cout << "TRAILER"  << "\n\n";
     for(const auto& field: fixMsg.trailer_.trailer_ ){
         printField( field );
     }
@@ -373,37 +373,116 @@ constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
 
     auto splittedMsg = split( message, SOH);
 
-    auto [fixMg, error] = categorize( splittedMsg, config);
+    auto [fixMsg, error] = categorize( splittedMsg, config);
+
+    fixMsg.rawMsg_ = std::forward<T>(message);
 
     if( !error.isEmpty() ){
         return false;
     }
-
-    auto requiredFieldsPresent = hasRequiredFields( fixMg );
+    
+    auto requiredFieldsPresent = hasRequiredFields( fixMsg );
 
     if( !requiredFieldsPresent ){
         return false;
     }
 
-    auto bodyLengthCorrect = checkBodyLength( fixMg );
+    auto bodyLengthCorrect = checkBodyLength( fixMsg );
 
     if( !bodyLengthCorrect ){
         return false;
     }
 
-    auto checkSumCorrect = checkCheckSum( fixMg );
+    auto checkSumCorrect = checkCheckSum( fixMsg );
 
     if( !checkSumCorrect ){
         return false;
     }
 
-    fixMessage = std::move(fixMg);
-    fixMessage.rawMsg_ = std::forward<T>(message);
+    fixMessage = std::forward<decltype(fixMsg)>(fixMsg);
 
     return true;
-
 }
 
+template<typename T, typename M>
+constexpr auto processComponent(T&&, M&&) -> bool; 
+
+/**
+ *  @brief process groups
+ *  @return true if the message has the necessary required fields of the group, false otherwise
+ **/
+template<typename T, typename M>
+constexpr auto processGroup(T&& groupNode, M&& message) -> bool{
+    
+    bool hasRequired{1};
+
+    for(auto& child: groupNode.children()){
+
+            if( std::strcmp("component", child.name() ) == 0 ){
+                return processComponent( child.attribute("name").as_string(), std::forward<M>(message) );
+            }else{
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                        message.body_.tagValues_.end(),
+                                                        [&child](auto& tag){
+                                                            return tag.name_ == child.attribute("name").as_string();
+                                                    });
+
+                    if( isFieldPresent == message.body_.tagValues_.end() ){
+                        std::string errMsg = "BODY: the tag with name=";
+                                    errMsg += child.attribute("name").as_string();
+                                    errMsg += " is required";
+
+                        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                        hasRequired = false;
+            }
+        }
+    }
+
+    return hasRequired;
+}
+/**
+ * @brief Process the given component for required fields checks
+ * @return true if the message has the necessary required fields by the component, false otherwise
+ **/
+template<typename T, typename M>
+constexpr auto processComponent(T&& compName, M&& message) -> bool{
+    auto component = fixSpec.child("fix")
+                            .child("components")
+                            .find_child_by_attribute("component","name", compName );
+    
+    bool hasRequired{1};
+
+    for(auto& componentField: component.children() ){
+        if( std::strcmp( componentField.attribute("required").as_string(), "Y") == 0 ){
+            
+            if( std::strcmp("component", componentField.name() ) == 0 ) {
+                
+                return processComponent(componentField.attribute("name").as_string(), std::forward<M>(message));
+            }
+            else if( std::strcmp("group", componentField.name()) == 0 ) {
+                return processGroup(componentField, std::forward<M>(message) );
+            }else{
+
+                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                    message.body_.tagValues_.end(),
+                                                    [&componentField](auto& tag){
+                                                        return tag.name_ == componentField.attribute("name").as_string();
+                                                   });
+
+                if( isFieldPresent == message.body_.tagValues_.end() ){
+                    std::string errMsg = "BODY: the tag with name=";
+                                errMsg += componentField.attribute("name").as_string();
+                                errMsg += " is required";
+
+                    errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                    hasRequired = false;
+                }                                   
+            }
+        }
+    }
+
+    return hasRequired;
+}
 /**
  * @brief Check for required fields in the message
  * @return true if the message has required fields, false otherwise
@@ -472,21 +551,35 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
         for(const auto& child: msgField.children() ){
 
             if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
+                
+                // @TODO use tag dispatcher instead of if-else
+                // Check if the field is present in the body
+            
+                if( std::strcmp("component", child.name() ) == 0 ){
 
-                // Check if the field is present in the header
-                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
-                                                    message.body_.tagValues_.end(),
-                                                    [&child](auto& tag){
-                                                        return tag.name_ == child.attribute("name").as_string();
-                                                    });
+                    hasRequired = processComponent( child.attribute("name").as_string(), std::forward<T>(message) );
+                                           
+                }else if( std::strcmp("group", child.name()) == 0 ){
 
-                if( isFieldPresent == message.body_.tagValues_.end() ){
-                    std::string errMsg = "BODY: the tag with name=";
-                                errMsg += child.attribute("name").as_string();
-                                errMsg += " is required";
+                    hasRequired = processGroup(child, std::forward<T>(message) );
 
-                    errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                    hasRequired = false;
+                }else{
+
+                    auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
+                                                        message.body_.tagValues_.end(),
+                                                        [&child](auto& tag){
+                                                            return tag.name_ == child.attribute("name").as_string();
+                                                        });
+
+                    if( isFieldPresent == message.body_.tagValues_.end() ){
+                        std::string errMsg = "BODY: the tag with name=";
+                                    errMsg += child.attribute("name").as_string();
+                                    errMsg += " is required";
+
+                        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
+                        hasRequired = false;
+                    }
+
                 }
 
             }
@@ -500,7 +593,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
 
         if( std::strcmp( child.attribute("required").as_string(), "Y") == 0 ){
 
-            // Check if the field is present in the header
+            // Check if the field is present in the trailer
             auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(),
                                                 message.trailer_.trailer_.end(),
                                                 [&child](auto& field){
@@ -580,11 +673,10 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
 
     // We assume that the trailer only contains one field which is the checksum
     // While checking the FIX spec we discovered that other fields in the trailer are deprecated
-
     auto csSize = message.trailer_.trailer_.at(0).value_.size() == 3;
-
+ 
     if( !csSize ){
-        errorBag.errors_.emplace_back( Error{"The checksum size is invalide. It should be 3"});
+        errorBag.errors_.emplace_back( Error{"The checksum size is invalid. It should be 3"});
         return false;
     }
 
@@ -592,7 +684,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     int countSoh{0};
 
     // The loop is going till the size() - 7, 7=number of characters in the trailing tag of the message
-    for(int i{0}; i < message.rawMsg_.size() - 7; ++i){
+    for(int i{0}; i != message.rawMsg_.size() - 7; ++i){
 
         if( SOH != message.rawMsg_.at(i) ){
             computedCheckSum += message.rawMsg_.at(i);
@@ -601,7 +693,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
         }
     }
 
-    computedCheckSum = (computedCheckSum+countSoh)%256;
+    computedCheckSum = (computedCheckSum + countSoh)%256;
     auto computedCheckSumStr = std::to_string( computedCheckSum );
 
     if( computedCheckSumStr.size() != 3 ){
@@ -618,5 +710,13 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     return true;
 }
 
+/**
+ * @brief Print the message in a human readable way
+ **/
+
+template<typename T=void>
+constexpr auto fixToHuman() -> void {
+    return prettyPrint( fixMessage );
+}
 
 }// namespace fixparser
