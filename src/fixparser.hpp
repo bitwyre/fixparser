@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string_view>
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <filesystem>
@@ -46,16 +47,17 @@ struct Value{
     std::string description_;
 };
 
+using TagEnum = std::string;
 struct Tag{
     std::uint16_t number_{};
     std::string name_;
     std::string type_;
     std::string value_;
-    std::vector<Value> tagValues_; // Set of values that a specific Tag can take, this maybe empty for some tags
+    std::unordered_map<TagEnum, Value> tagValues_; // Set of values that a specific Tag can take, this maybe empty for some tags
 };
 
 struct Header{
-    std::vector<Field> headerFields_;
+    std::vector<Tag> headerFields_;
     Group grp_;
 };
 
@@ -64,7 +66,7 @@ struct Body{
 };
 
 struct Trailer{
-    std::vector<Field> trailer_;
+    std::vector<Tag> trailer_;
 };
 
 struct FixMessage{
@@ -156,10 +158,22 @@ template <typename T,typename S=std::enable_if_t< std::is_convertible_v<T, std::
 }
 
 template<typename T>
-constexpr auto printFieldImpl(T&& field, std::false_type) -> void {
+constexpr auto printFieldImpl(T&& tag, std::false_type) -> void {
 
-    std::cout <<  field.number_ << "\t\t";
-    std::cout << field.name_ << ": " << field.value_ << "\n\n";
+    std::cout <<  tag.number_ << "\t\t";
+
+    if( !tag.tagValues_.empty() ){
+        
+        if(auto foundTag = tag.tagValues_.find( tag.value_ );
+            foundTag != tag.tagValues_.end() ){
+
+            std::cout << tag.name_ << ": " << foundTag->second.description_ << " (" << tag.value_ << ")\n\n";
+        }else{
+            std::cout << tag.value_ << " is not a correct value for tag " << tag.name_ << "\n\n";
+        }
+    }else{
+        std::cout << tag.name_ << ": " << tag.value_ << "\n\n";
+    }
 }
 
 template<typename T>
@@ -268,72 +282,49 @@ template<typename T,typename=std::enable_if_t< !std::is_integral_v<T> > >
             auto headers = fixSpec.child("fix").child("header");
             auto trailers = fixSpec.child("fix").child("trailer");
             auto fields = fixSpec.child("fix").child("fields");
-
+            Tag tag ;
+            
             auto isField = fields.find_node([&tagValueVec](auto& node){
                 return
                 std::strcmp(node.attribute("number").as_string(), tagValueVec.front().c_str() ) == 0;
             });
 
             if( isField ){
-                 Field f;
-                 f.number_ = isField.attribute("number").as_int();
-                 f.value_ = tagValueVec.back();
 
-                auto nodeFoundInHeader = headers.find_node([&isField](auto& node){
+              tag.name_ = static_cast<std::string>(isField.attribute("name").as_string());
+              tag.number_ = isField.attribute("number").as_int();
+              tag.type_ = static_cast<std::string>(isField.attribute("type").as_string());
+              tag.value_ = tagValueVec.back();
+
+              // If the field has some set of values we retrieve them
+              for (auto &value : isField.children()) {
+                Value v;
+                v.description_ = static_cast<std::string>(value.attribute("description").as_string());
+                v.enumValue_ = static_cast<std::string>(value.attribute("enum").as_string());
+                tag.tagValues_.emplace(std::make_pair(v.enumValue_, v));
+              }
+
+              auto nodeFoundInHeader =
+                  headers.find_node([&isField](auto &node) {
                     return
                     std::strcmp(node.attribute("name").as_string(), isField.attribute("name").as_string() ) == 0;
-                });
+                  });
 
-                if( nodeFoundInHeader ){
-                    if( std::strcmp( nodeFoundInHeader.parent().name(), "group") ){
-                        // The node is in a <group> node
-                        f.isInGroup_ = true;
+              if (!nodeFoundInHeader) {
+                    auto nodeFoundInTrailer =
+                        trailers.find_node([&isField](auto &node) {
+                        return std::strcmp(
+                                    node.attribute("name").as_string(),
+                                    isField.attribute("name").as_string()) == 0;
+                        });
+
+                    if (nodeFoundInTrailer) {
+                            fixTrailer.trailer_.emplace_back(tag);
+                    } else {
+                        fixBody.tagValues_.emplace_back(tag);
                     }
-
-                    f.fieldName_ = static_cast<std::string>(nodeFoundInHeader.attribute("name").as_string());
-                    f.isComponent_ = false;
-                    f.isRequired_ = nodeFoundInHeader.attribute("required").as_int() != 0x4E ? true : false;
-
-                    fixHeader.headerFields_.emplace_back(f);
-                }
-
-                if( !nodeFoundInHeader ){
-
-                    auto nodeFoundInTrailer = trailers.find_node([&isField](auto& node){
-                        return
-                        std::strcmp(node.attribute("name").as_string(), isField.attribute("name").as_string() ) == 0;
-                    });
-
-                    if( nodeFoundInTrailer ){
-                        f.fieldName_ = static_cast<std::string>(nodeFoundInTrailer.attribute("name").as_string());
-                        f.isComponent_ = false;
-                        f.isInGroup_ = false;
-                        f.isRequired_ = nodeFoundInTrailer.attribute("required").as_int() != 0x4E ? true : false;
-
-                        fixTrailer.trailer_.emplace_back( f );
-                    }else{
-
-                        // The node is in the body in this case so we construct a Tag object
-                        // The question about the difference between Tag and Field may arise as this point
-                        Tag tag ;
-
-                        tag.name_ = static_cast<std::string>( isField.attribute("name").as_string() );
-                        tag.number_ = isField.attribute("number").as_int();
-                        tag.type_ = static_cast<std::string>( isField.attribute("type").as_string() );
-                        tag.value_ = tagValueVec.back();
-                        // If the field has some set of values we retrieve them
-
-                        for( const auto& value: isField.children() ){
-                            Value v;
-                            v.description_ = static_cast<std::string>( value.attribute("type").as_string() );
-                            v.enumValue_  = static_cast<std::string>( value.attribute("enum").as_string() );
-
-                            tag.tagValues_.emplace_back( v );
-                        }
-
-                        fixBody.tagValues_.emplace_back( tag );
-                    }
-
+                }else{
+                    fixHeader.headerFields_.emplace_back(tag);
                 }
 
             }else{
@@ -506,7 +497,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
             auto isFieldPresent = std::find_if( message.header_.headerFields_.begin(),
                                                 message.header_.headerFields_.end(),
                                                 [&child](auto& field){
-                                                    return field.fieldName_ == child.attribute("name").as_string();
+                                                    return field.name_ == child.attribute("name").as_string();
                                                 });
 
             if( isFieldPresent == message.header_.headerFields_.end() ){
@@ -598,7 +589,7 @@ constexpr auto hasRequiredFields(T&& message) noexcept -> bool{
             auto isFieldPresent = std::find_if( message.trailer_.trailer_.begin(),
                                                 message.trailer_.trailer_.end(),
                                                 [&child](auto& field){
-                                                    return field.fieldName_ == child.attribute("name").as_string();
+                                                    return field.name_ == child.attribute("name").as_string();
                                                 });
 
             if( isFieldPresent == message.trailer_.trailer_.end() ){
