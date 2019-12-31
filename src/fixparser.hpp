@@ -418,24 +418,25 @@ constexpr auto processGroup(T&& groupNode, M&& message) -> bool{
 
     for(auto& child: groupNode.children()){
 
-            if( std::strcmp("component", child.name() ) == 0 ){
-                return processComponent( child.attribute("name").as_string(), std::forward<M>(message) );
-            }else{
-                auto isFieldPresent = std::find_if( message.body_.tagValues_.begin(),
-                                                        message.body_.tagValues_.end(),
-                                                        [&child](auto& tag){
-                                                            return tag.name_ == child.attribute("name").as_string();
-                                                    });
+      if (std::strcmp("component", child.name()) == 0) {
+        return processComponent(child.attribute("name").as_string(),
+                                std::forward<M>(message));
+      } else {
+        auto isFieldPresent = std::find_if(
+            message.body_.tagValues_.begin(), message.body_.tagValues_.end(),
+            [&child](auto &tag) {
+              return tag.name_ == child.attribute("name").as_string();
+            });
 
-                    if( isFieldPresent == message.body_.tagValues_.end() ){
-                        std::string errMsg = "BODY: the tag with name=";
-                                    errMsg += child.attribute("name").as_string();
-                                    errMsg += " is required";
+        if (isFieldPresent == message.body_.tagValues_.end()) {
+          std::string errMsg = "BODY: the tag with name=";
+          errMsg += child.attribute("name").as_string();
+          errMsg += " is required";
 
-                        errorBag.errors_.emplace_back( Error{std::move(errMsg)} );
-                        hasRequired = false;
-            }
+          errorBag.errors_.emplace_back(Error{std::move(errMsg)});
+          hasRequired = false;
         }
+      }
     }
 
     return hasRequired;
