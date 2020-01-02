@@ -688,8 +688,8 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     computedCheckSum = (computedCheckSum + countSoh)%256;
     auto computedCheckSumStr = std::to_string( computedCheckSum );
 
-    if( computedCheckSumStr.size() != 3 ){
-        computedCheckSumStr = "0" + computedCheckSumStr;
+    if( computedCheckSumStr.size() < 3 ){
+        computedCheckSumStr = std::string( 3 - computedCheckSumStr.size(), '0') + computedCheckSumStr;
     }
 
     if( computedCheckSumStr != message.trailer_.trailer_.at(0).value_ ){
