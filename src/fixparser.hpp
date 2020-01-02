@@ -688,8 +688,13 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     computedCheckSum = (computedCheckSum + countSoh)%256;
     auto computedCheckSumStr = std::to_string( computedCheckSum );
 
-    if( computedCheckSumStr.size() != 3 ){
-        computedCheckSumStr = "0" + computedCheckSumStr;
+    // In a FIX message the checksum size need to be 3, hence the 3 in the following lines
+    // After the computation of the checksum when we obtain result like 1 we need to add two 
+    // zeros in front so it becomes 001, and for the case when it's 2 digits like 12 we need 
+    // to add one zero in front so 012
+
+    if( computedCheckSumStr.size() < 3 ){
+        computedCheckSumStr = std::string( 3 - computedCheckSumStr.size(), '0') + computedCheckSumStr;
     }
 
     if( computedCheckSumStr != message.trailer_.trailer_.at(0).value_ ){
