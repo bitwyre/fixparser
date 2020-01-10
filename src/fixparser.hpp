@@ -11,7 +11,6 @@
 #include <type_traits>
 #include <pugixml.hpp>
 
-#define SOH '|'
 
 namespace fixparser {
 
@@ -93,14 +92,14 @@ struct ErrorBag{
 
 struct Config{
 
-    Config(): pathSrc_("/usr/local/etc"), fixStd_(FixStd::FIX44){}
+    Config(): pathSrc_("/usr/local/etc"), fixStd_(FixStd::FIX44), SOH_('|'){}
 
-    template<typename N>
-    Config(N&& pathSrc): pathSrc_(std::forward<N>(pathSrc)) {}
+    template<typename Path>
+    Config(Path&& pathSrc,const char soh='|'): pathSrc_(std::forward<Path>(pathSrc)), SOH_(soh) {}
 
-    template<typename N>
-    Config(N&& pathSrc, FixStd&& fixStd): pathSrc_(std::forward<N>(pathSrc)),
-                                          fixStd_(std::move(fixStd)) {}
+    template<typename Path>
+    Config(Path&& pathSrc, FixStd&& fixStd, const char soh='|'): pathSrc_(std::forward<Path>(pathSrc)),
+                                          fixStd_(std::move(fixStd)), SOH_(soh) {}
     auto getPath() const{
         return pathSrc_;
     }
@@ -109,9 +108,14 @@ struct Config{
         return fixStd_;
     }
 
+    auto getSOH() const{
+        return SOH_;
+    }
+
     private:
         std::string pathSrc_;
         FixStd fixStd_;
+        char SOH_;
 
 };
 
@@ -260,7 +264,7 @@ constexpr auto prettyPrint(T&& fixMsg) -> void {
 
 /**
  * @brief take a vector of string and categorize each element according to the fix spec
- * @return a pair containing the constructed FIX message and an error bag which is empty is no errors found during the process
+ * @return a pair containing the constructed FIX message and an error bag which is empty if no errors found during the process
  **/
 
 template<typename T,typename=std::enable_if_t< !std::is_integral_v<T> > >
@@ -340,9 +344,9 @@ template<typename T,typename=std::enable_if_t< !std::is_integral_v<T> > >
 
         }
 
-        fixMsg.header_ = fixHeader;
-        fixMsg.body_ = fixBody;
-        fixMsg.trailer_ = fixTrailer;
+        fixMsg.header_ = std::move(fixHeader);
+        fixMsg.body_ = std::move(fixBody);
+        fixMsg.trailer_ = std::move(fixTrailer);
 
         return std::make_pair(fixMsg, errorBag);
     }else{
@@ -359,10 +363,10 @@ template<typename T,typename=std::enable_if_t< !std::is_integral_v<T> > >
  * When it returns false, the list of errors encountered can be get via the getErrors() method
  * and be displayed e.g: std::cout << fixparser::getErrors() << "\n"
 */
-template <typename T,typename=std::enable_if_t<std::is_convertible_v<T, std::string> > >
+template <typename T,typename=std::enable_if_t<std::is_convertible_v<std::decay_t<T>, std::string> > >
 constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
 
-    auto splittedMsg = split( message, SOH);
+    auto splittedMsg = split( message, config.getSOH() );
 
     auto [fixMsg, error] = categorize( splittedMsg, config);
 
@@ -384,7 +388,7 @@ constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
         return false;
     }
 
-    auto checkSumCorrect = checkCheckSum( fixMsg );
+    auto checkSumCorrect = checkCheckSum( fixMsg, config);
 
     if( !checkSumCorrect ){
         return false;
@@ -395,8 +399,8 @@ constexpr auto checkMsgValidity(T&& message, Config& config) noexcept -> bool {
     return true;
 }
 
-template<typename T, typename M>
-constexpr auto processComponent(T&&, M&&) -> bool; 
+template<typename CompName, typename Msg>
+constexpr auto processComponent(CompName&&, Msg&&) -> bool; 
 
 /**
  *  @brief process groups
@@ -415,7 +419,7 @@ constexpr auto processGroup(T&& groupNode, M&& message) -> bool{
       } else {
         auto isFieldPresent = std::find_if(
             message.body_.tagValues_.begin(), message.body_.tagValues_.end(),
-            [&child](auto &tag) {
+            [&child](auto& tag) {
               return tag.name_ == child.attribute("name").as_string();
             });
 
@@ -661,7 +665,7 @@ constexpr auto checkBodyLength(T&& message) noexcept -> bool {
  **/
 
 template<typename T,typename=std::enable_if_t<std::is_same_v<std::decay_t<T>, FixMessage> > >
-constexpr auto checkCheckSum(T&& message) noexcept -> bool {
+constexpr auto checkCheckSum(T&& message, Config& config) noexcept -> bool {
 
     // We assume that the trailer only contains one field which is the checksum
     // While checking the FIX spec we discovered that other fields in the trailer are deprecated
@@ -678,7 +682,7 @@ constexpr auto checkCheckSum(T&& message) noexcept -> bool {
     // The loop is going till the size() - 7, 7=number of characters in the trailing tag of the message
     for(int i{0}; i != message.rawMsg_.size() - 7; ++i){
 
-        if( SOH != message.rawMsg_.at(i) ){
+        if( config.getSOH() != message.rawMsg_.at(i) ){
             computedCheckSum += message.rawMsg_.at(i);
         }else{
             ++countSoh;
