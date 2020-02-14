@@ -86,3 +86,5 @@ if the message is a valid one or false otherwise. When it returns `false` meanin
 - [Sonkeng Maldini](https://github.com/sdmg15)
 
 # Licence
+
+- GNU GPL v3
